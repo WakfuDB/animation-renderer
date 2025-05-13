@@ -13,6 +13,7 @@ import ffmpeg from 'fluent-ffmpeg';
 import { writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
 import { dirSync, setGracefulCleanup } from 'tmp';
+import type { File } from 'decompress';
 
 setGracefulCleanup();
 
@@ -597,8 +598,47 @@ export class AnimationRenderer {
 		return await loadImage(texture);
 	}
 
+	static async loadTextureFromMemory(files: File[], animation: Animation) {
+		const textureFile = files.find((f) =>
+			f.path.includes(`Atlas/${animation.texture!.name}.png`)
+		)!;
+		return await loadImage(textureFile.data);
+	}
+
+	static async fromMemoryFile(files: File[], type: AnimationType, id: number | string) {
+		const file = files.find((f) => f.path.includes(`${id}.anm`));
+		if (!file) {
+			throw new Error(`File not found for animation ${id}`);
+		}
+		const animation = readAnimation(file.data);
+		const references: AnimationRenderer[] = [];
+		// Load used animation files
+		// -- some animations (e.g 104701363) have reference to other animation files that are used
+		if (animation.index?.file_names?.length) {
+			for (let index = 0; index < animation.index.file_names.length; index++) {
+				const animationFile = animation.index.file_names[index]!;
+				const subAnimation = await AnimationRenderer.fromMemoryFile(
+					files,
+					type,
+					animationFile!.replace('.anm', '')
+				);
+				references.push(subAnimation);
+			}
+		}
+		let texture = new Image();
+		if (animation.texture) {
+			texture = await AnimationRenderer.loadTextureFromMemory(files, animation);
+		}
+		const animationRenderer = new AnimationRenderer(animation, texture, references);
+		for (let index = 0; index < animationRenderer.references.length; index++) {
+			const reference = animationRenderer.references[index]!;
+			reference.parent = animationRenderer;
+		}
+		return animationRenderer;
+	}
+
 	static async fromFile(type: AnimationType, id: number | string) {
-		const animationFile = await readFile(join(env.GAME_PATH!, `animations/${type}/${id}.anm`));
+		const animationFile = await readFile(join('archive', `animations/${type}/${id}.anm`));
 		const animation = readAnimation(animationFile);
 		const references: AnimationRenderer[] = [];
 		// Load used animation files

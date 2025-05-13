@@ -2,6 +2,9 @@ import { writeFile } from 'fs/promises';
 import { AnimationRenderer } from '../src/render.ts';
 import { parseArgs } from 'util';
 import { mkdir } from 'fs/promises';
+import decompress from 'decompress';
+import { join } from 'path';
+import { env } from 'bun';
 
 export async function main() {
 	const { values: args } = parseArgs({
@@ -15,9 +18,10 @@ export async function main() {
 		console.error('No id provided');
 		return;
 	}
-	await mkdir('output');
+	await mkdir('output', { recursive: true });
+	const files = await decompress(join(env.GAME_PATH!, 'contents/animations/npcs/npcs.jar'));
 
-	const animation = await AnimationRenderer.fromFile('npcs', args.id);
+	const animation = await AnimationRenderer.fromMemoryFile(files, 'npcs', args.id);
 	// await writeFile(`${animationId}.json`, JSON.stringify(animation.animation, undefined, 4));
 	if (animation.hasTexture) {
 		const staticSprite = animation.findStaticSprite();
